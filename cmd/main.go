@@ -39,40 +39,46 @@ func NewApp(keyFile string, appId int64, installationId int64) (*App, error) {
 	return app, nil
 }
 
+type CreateCheckParams struct {
+	Owner             string
+	Repo              string
+	CommitSHA         string
+	OriginBranch      string
+	DestinationBranch string
+}
+
 func (a *App) CreateCheck(
 	ctx context.Context,
-	owner string,
-	repoName string,
-	hash string,
-	branchOrigin string,
-	branchDestination string,
+	params CreateCheckParams,
 ) error {
-	r, _, err := a.client.Checks.ListCheckRunsForRef(ctx, owner, repoName, hash, &github.ListCheckRunsOptions{
-		CheckName: github.String(a.checkName),
-	})
+	r, _, err := a.client.Checks.ListCheckRunsForRef(
+		ctx,
+		params.Owner,
+		params.Repo,
+		params.CommitSHA,
+		&github.ListCheckRunsOptions{CheckName: github.String(a.checkName)},
+	)
 
 	if err != nil {
 		return fmt.Errorf("failed to list checks: %w", err)
 	}
 
 	if *r.Total > 0 {
-		for _, c := range r.CheckRuns {
-			slog.Info("Checks found", "name", *c.Name, "id", *c.ID, "status", *c.Status, "conclusion", *c.Conclusion)
-		}
+		return nil
 	}
 
 	status := StatusFailure
-	if branchDestination == "main" && strings.HasPrefix(branchOrigin, "release/") {
+	if params.DestinationBranch == "main" && strings.HasPrefix(params.OriginBranch, "release/") {
 		status = StatusSuccess
 	}
 
 	_, _, err = a.client.Checks.CreateCheckRun(
 		ctx,
-		owner,
-		repoName,
+		params.Owner,
+		params.Repo,
 		github.CreateCheckRunOptions{
 			Name:       a.checkName,
-			HeadSHA:    hash,
+			HeadSHA:    params.CommitSHA,
 			Status:     github.String(StatusCompleted),
 			Conclusion: github.String(status),
 			CompletedAt: &github.Timestamp{
@@ -128,12 +134,6 @@ func main() {
 
 		switch event := event.(type) {
 		case *github.PullRequestEvent:
-			logger.Info(
-				"Pullrequest",
-				"action", *event.Action,
-				"commits", *event.PullRequest.Commits,
-				"baseLabel", *event.PullRequest.Base.Label,
-			)
 
 			if *event.Action != "opened" && *event.Action != "reopened" {
 				break
@@ -141,27 +141,13 @@ func main() {
 
 			if err := app.CreateCheck(
 				c,
-				*event.Repo.Owner.Login,
-				*event.Repo.Name,
-				*event.PullRequest.Head.SHA,
-				*event.PullRequest.Head.Ref,
-				*event.PullRequest.Base.Ref,
-			); err != nil {
-				logger.Error("failed to create check", "error", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error": err.Error(),
-				})
-				return
-			}
-
-		case *github.PullRequest:
-			if err := app.CreateCheck(
-				c,
-				*event.User.Name,
-				*event.Head.Repo.Name,
-				*event.Head.SHA,
-				*event.Head.Ref,
-				*event.Base.Ref,
+				CreateCheckParams{
+					Owner:             *event.Repo.Owner.Login,
+					Repo:              *event.Repo.Name,
+					CommitSHA:         *event.PullRequest.Head.SHA,
+					OriginBranch:      *event.PullRequest.Head.Ref,
+					DestinationBranch: *event.PullRequest.Base.Ref,
+				},
 			); err != nil {
 				logger.Error("failed to create check", "error", err)
 				c.JSON(http.StatusInternalServerError, gin.H{
@@ -176,5 +162,5 @@ func main() {
 		})
 	})
 
-	r.Run()
+	r.Run("localhost:8080")
 }
