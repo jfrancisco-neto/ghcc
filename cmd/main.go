@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/go-github/v55/github"
 )
 
 func main() {
@@ -13,10 +14,29 @@ func main() {
 	logger.Info("Webservice starging")
 
 	r := gin.Default()
-	r.GET("/", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "pong",
-		})
+	r.GET("/github/webhook", func(c *gin.Context) {
+		payload, err := github.ValidatePayload(c.Request, []byte{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"err": err.Error(),
+			})
+		}
+
+		event, err := github.ParseWebHook(github.WebHookType(c.Request), payload)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"err": err.Error(),
+			})
+		}
+
+		switch event := event.(type) {
+		case *github.PullRequest:
+			logger.Info(
+				"Pullrequest",
+				"commits", event.Commits,
+				"baseLabel", event.Base.Label,
+			)
+		}
 	})
 
 	r.Run()
