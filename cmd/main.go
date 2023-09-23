@@ -14,7 +14,7 @@ func main() {
 	logger.Info("Webservice starging")
 
 	r := gin.Default()
-	r.GET("/github/webhook", func(c *gin.Context) {
+	r.POST("/github/webhook", func(c *gin.Context) {
 		payload, err := github.ValidatePayload(c.Request, []byte{})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -30,11 +30,18 @@ func main() {
 		}
 
 		switch event := event.(type) {
+		case *github.PullRequestEvent:
+			logger.Info(
+				"Pullrequest",
+				"action", *event.Action,
+				"commits", *event.PullRequest.Commits,
+				"baseLabel", *event.PullRequest.Base.Label,
+			)
 		case *github.PullRequest:
 			logger.Info(
 				"Pullrequest",
-				"commits", event.Commits,
-				"baseLabel", event.Base.Label,
+				"commits", *event.Commits,
+				"baseLabel", *event.Base.Label,
 			)
 		}
 	})
