@@ -1,0 +1,12 @@
+###
+# @name ping
+GET http://localhost:8080/ping
+
+###
+# @name SmeePing
+POST https://smee.io/hp2AKFQyAQjiPH7k
+Content-Type: application/json
+
+{
+    "message": "pong"
+}
